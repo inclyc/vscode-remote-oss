@@ -71,6 +71,12 @@
                 "command": "remote-oss.showLog",
                 "title": "Show Log",
                 "category": "Remote-OSS"
+            },
+            {
+                "command": "remote-oss.connectToTemporaryHost",
+                "title": "Connect to Temporary Host...",
+                "category": "Remote-OSS",
+                "icon": "$(plug)"
             }
         ],
         "resourceLabelFormatters": [
@@ -96,6 +102,11 @@
                     "command": "remote-oss.showLog",
                     "when": "true",
                     "group": "remote_20_oss_1general@4"
+                },
+                {
+                    "command": "remote-oss.connectToTemporaryHost",
+                    "when": "true",
+                    "group": "remote_20_oss_1general@2"
                 }
             ],
             "view/title": [
