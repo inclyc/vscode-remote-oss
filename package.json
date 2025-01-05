@@ -23,11 +23,7 @@
         "Other"
     ],
     "activationEvents": [
-        "onResolveRemoteAuthority:remote-oss",
-        "onCommand:remote-oss.openEmptyWindowInCurrentWindow",
-        "onCommand:remote-oss.openFolderInCurrentWindow",
-        "onCommand:remote-oss.showLog",
-        "onView:remoteHosts"
+        "onResolveRemoteAuthority:remote-oss"
     ],
     "main": "./out/extension.js",
     "capabilities": {
