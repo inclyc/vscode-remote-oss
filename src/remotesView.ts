@@ -15,23 +15,27 @@ import {
 } from "vscode";
 import { HostConfig, HostKind } from "./remotesConfig";
 
-export function encode_remote_host(host: string): string {
-    const encoded = encodeURIComponent(Buffer.from(host).toString("hex"));
-    return `remote-oss+--${encoded}`;
+export interface HostInfo {
+    type: "transient" | "configured";
+    host: string;
+    port?: number;
 }
 
-export function decode_remote_host(encoded: string): [string | undefined, boolean] {
-    var match = encoded.match(/remote-oss\+--(.*)/);
+export function encode_remote_host(info: HostInfo): string {
+    const json = JSON.stringify(info);
+    const base64 = Buffer.from(json).toString("base64");
+    return `remote-oss+${base64}`;
+}
+
+export function decode_remote_host(encoded: string): HostInfo | undefined {
+    const match = encoded.match(/remote-oss\+(.*)/);
     if (match) {
-        const decoded = Buffer.from(decodeURIComponent(match[1]), "hex").toString();
-        return [decoded, false];
+        const base64 = match[1];
+        const json = Buffer.from(base64, "base64").toString();
+        const info: HostInfo = JSON.parse(json);
+        return info;
     }
-    var match = encoded.match(/remote-oss\+(.*)/);
-    if (match) {
-        const decoded = match[1];
-        return [decoded, true];
-    }
-    return [undefined, false]
+    return undefined;
 }
 
 export class HostBase extends TreeItem {
@@ -227,7 +231,7 @@ export class RemotesDataProvider implements TreeDataProvider<TreeItem> {
                 return;
             }
 
-            return encode_remote_host(result[0].label);
+            return encode_remote_host({ type: "configured", host: result[0].label });
         } finally {
             quickpick.dispose();
         }
@@ -242,48 +246,54 @@ export class RemotesDataProvider implements TreeDataProvider<TreeItem> {
         return raw;
     }
 
-    async resolveAuthority(
-        label: string,
-        channel: OutputChannel,
-        legacy: boolean,
-    ): Promise<ResolvedAuthority> {
-        channel.appendLine(`resolving label '${label}' (legacy=${legacy})...`);
-
-        var predicate;
-        if (legacy) {
-            predicate = function (h: PlainHostItem) {
-                return h.label?.toString().toLowerCase() === label.toLowerCase()
-            };
-        } else {
-            predicate = function (h: PlainHostItem) {
-                return h.label === label
-            };
-        }
-
-        const hosts = (await this.getHostList()).filter(predicate);
+    async resolveHost(label: string): Promise<PlainHostItem> {
+        const hosts = (await this.getHostList()).filter((h: PlainHostItem) => {
+            return h.label === label
+        });
 
         if (!hosts || hosts.length === 0) {
-            throw RemoteAuthorityResolverError.NotAvailable(`Host ${label} is not available.`, true);
+            throw RemoteAuthorityResolverError.NotAvailable(`Host ${label} is not configured.`, true);
         }
-        const host = hosts[0];
 
-        channel.appendLine(`resolved label to '${host.label}'...`);
+        return hosts[0];
+    }
 
-        if (host instanceof PlainHostItem) {
-            if (typeof host.connectionToken === "boolean") {
-                if (!host.connectionToken) {
-                    return new ResolvedAuthority(host.host, host.port);
+
+    async resolveAuthority(
+        { type, host, port }: HostInfo,
+        channel: OutputChannel,
+    ): Promise<ResolvedAuthority> {
+        channel.appendLine(`resolving host '${host}'...`);
+
+        if (type === "transient") {
+            channel.appendLine(`resolved transient host to '${host}:${port}'...`);
+            const token = await this.pickToken();
+            if (!token) {
+                return new ResolvedAuthority(host, port!);
+            }
+            return new ResolvedAuthority(host, port!, token);
+        }
+
+        // Configured host
+        const resolvedHost = await this.resolveHost(host);
+
+        channel.appendLine(`resolved host to '${resolvedHost.label}'...`);
+
+        if (resolvedHost instanceof PlainHostItem) {
+            if (typeof resolvedHost.connectionToken === "boolean") {
+                if (!resolvedHost.connectionToken) {
+                    return new ResolvedAuthority(resolvedHost.host, resolvedHost.port);
                 } else {
                     const token = await this.pickToken();
                     if (!token) {
                         throw new Error("no token specified");
                     }
-                    return new ResolvedAuthority(host.host, host.port, token);
+                    return new ResolvedAuthority(resolvedHost.host, resolvedHost.port, token);
                 }
             } else {
-                return new ResolvedAuthority(host.host, host.port, host.connectionToken);
+                return new ResolvedAuthority(resolvedHost.host, resolvedHost.port, resolvedHost.connectionToken);
             }
         }
-        throw RemoteAuthorityResolverError.NotAvailable(`Host ${label} is not configured.`, true);
+        throw RemoteAuthorityResolverError.NotAvailable(`Host ${host} is not configured.`, true);
     }
 }
